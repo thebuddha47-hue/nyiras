@@ -1,0 +1,40 @@
+name: Daily Discord notification
+
+on:
+  schedule:
+    # 17:00 Budapest: 15:00 UTC summer, 16:00 UTC winter.
+    - cron: '0 15 * * *'
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-discord-notification
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Budapest local time
+        id: check
+        env:
+          TZ: Europe/Budapest
+        shell: bash
+        run: |
+          local_time="$(date +'%H:%M')"
+          echo "Budapest local time: $(date +'%Y-%m-%d %H:%M:%S %Z')"
+          if [[ "$local_time" > "16:59" && "$local_time" < "17:16" ]]; then
+            echo 'should_send=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'should_send=false' >> "$GITHUB_OUTPUT"
+            echo 'Skipping scheduled send outside 17:00-17:15 Europe/Budapest.'
+          fi
+      - name: Send Discord message
+        if: steps.check.outputs.should_send == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python3 notify.py
